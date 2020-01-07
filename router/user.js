@@ -3,25 +3,36 @@ const Result = require('../models/Result')
 const { login } = require('../services/user')
 const { md5 } = require('../utils/index')
 const { PWD_SALT } = require('../utils/constant')
+const { body, validationResult } = require('express-validator')
+const boom = require('boom')
+
 const router = express.Router()
 
-router.post('/login', function (req, res, next) {
-  let { username, password } = req.body
-  password = md5(username + PWD_SALT)
-
-  login(username, password).then(user => {
-    if (!user || user.length === 0) {
-      new Result('登录失败').fail(res)
+router.post('/login',
+  [
+    body('username').isString().withMessage('username类型不正确'),
+    body('password').isString().withMessage('password类型不正确')
+  ],
+  function (req, res, next) {
+    const err = validationResult(req)
+    console.log('err:' + JSON.stringify(err))
+    if (!err.isEmpty()) {
+      const [{ msg }] = err.errors
+      next(boom.badRequest(msg))
     } else {
-      new Result('登录成功').success(res)
+      let { username, password } = req.body
+      password = md5(username + PWD_SALT)
+      login(username, password).then(user => {
+        if (!user || user.length === 0) {
+          new Result('登录失败').fail(res)
+        } else {
+          new Result('登录成功').success(res)
+        }
+      })
     }
-  })
 
-  // if (username === 'admin' && password === '123456') {
-  //   new Result('登录成功').success(res)
-  // } else {
-  //   new Result('登录失败').fail(res)
-  // }
-})
+  }
+)
+
 
 module.exports = router

@@ -8,7 +8,7 @@ const {
 // 注册路由
 const router = express.Router()
 
-router.get('/', function(req, res) {
+router.get('/', function (req, res) {
   res.send('欢迎学习小慕读书管理后台')
 })
 
@@ -31,15 +31,22 @@ router.use((req, res, next) => {
  * 第二，方法的必须放在路由最后
  */
 router.use((err, req, res, next) => {
-  const msg = (err && err.message) || '系统错误'
-  const statusCode = (err.output && err.output.statusCode) || 500;
-  const errorMsg = (err.output && err.output.payload && err.output.payload.error) || err.message
-  res.status(statusCode).json({
-    code: CODE_ERROR,
-    msg,
-    error: statusCode,
-    errorMsg
-  })
+  console.log(err)
+  if (err.name && err.name === 'UnauthorizedError') {
+    const { status = 401 } = err
+    new Result(null, 'token 失效', {
+      error: err.status,
+      errorMsg: err.name
+    }).expired(res.status(err.status))
+  } else {
+    const msg = (err && err.message) || '系统错误'
+    const statusCode = (err.output && err.output.statusCode) || 500;
+    const errorMsg = (err.output && err.output.payload && err.output.payload.error) || err.message
+    new Result(null, msg, {
+      error: statusCode,
+      errorMsg
+    }).fail(res.status(statusCode))
+  }
 })
 
 module.exports = router

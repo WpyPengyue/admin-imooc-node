@@ -50,6 +50,12 @@ const {
       this.code = CODE_ERROR
       this.json(res)
     }
+
+    expired(res) {
+      this.code = CODE_TOKEN_EXPIRED
+      this.json(res)
+    }
+    
   }
   
   module.exports = Result

@@ -7,7 +7,10 @@ const { body, validationResult } = require('express-validator')
 const boom = require('boom')
 const jwt = require('jsonwebtoken')
 const { PRIVATE_KEY, JWT_EXPIRED } = require('../utils/constant')
+const jwtAuth = require('./jwt')
 const router = express.Router()
+
+router.use(jwtAuth)
 
 router.post('/login',
   [
@@ -22,7 +25,7 @@ router.post('/login',
       next(boom.badRequest(msg))
     } else {
       let { username, password } = req.body
-      password = md5(username + PWD_SALT)
+      password = md5(password + PWD_SALT)
       login(username, password).then(user => {
         if (!user || user.length === 0) {
           new Result('登录失败').fail(res)
@@ -37,6 +40,12 @@ router.post('/login',
       })
     }
 
+  }
+)
+
+router.get('/info',
+  function (req, res, next) {
+    res.json('user info ..')
   }
 )
 

@@ -1,7 +1,7 @@
 const express = require('express')
 const Result = require('../models/Result')
-const { login } = require('../services/user')
-const { md5 } = require('../utils/index')
+const { login, findUser } = require('../services/user')
+const { md5, decode } = require('../utils/index')
 const { PWD_SALT } = require('../utils/constant')
 const { body, validationResult } = require('express-validator')
 const boom = require('boom')
@@ -44,8 +44,20 @@ router.post('/login',
 )
 
 router.get('/info',
-  function (req, res, next) {
-    res.json('user info ..')
+  function (req, res) {
+    const decoded = decode(req)
+    if(decoded && decoded.username){
+      findUser(decoded.username).then(user => {
+        if(user){
+          user.roles = [user.role]
+          new Result(user, '获取用户信息成功').success(res)
+        }else{
+          new Result('获取用户信息失败').fail(res)
+        }
+      })
+    }else{
+      new Result('用户信息解析失败').fail(res)
+    }
   }
 )
 

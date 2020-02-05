@@ -1,6 +1,7 @@
 const express = require('express')
 const boom = require('boom')
 const userRouter = require('./user')
+const Result = require('../models/Result')
 const {
   CODE_ERROR
 } = require('../utils/constant')

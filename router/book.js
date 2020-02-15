@@ -1,7 +1,8 @@
 const express = require('express')
 const multer = require('multer')
-const { UPLOAD_PATH } = require('../utils/constant')
+const { UPLOAD_PATH, MIME_TYPE_EPUB } = require('../utils/constant')
 const Result = require('../models/Result')
+const Book = require('../models/Book')
 
 const router = express.Router()
 
@@ -13,6 +14,8 @@ router.post(
       new Result('上传电子书失败').fail(res)
     }else{
       new Result('上传电子书成功').success(res)
+      const book = new Book(req.file)
+      console.log(book)
     }
   }
 )

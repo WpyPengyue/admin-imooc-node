@@ -1,5 +1,6 @@
 const { MIME_TYPE_EPUB, UPLOAD_URL, UPLOAD_PATH } = require('../utils/constant')
 const fs = require('fs')
+const Epub = require('../utils/epub')
 
 class Book {
 
@@ -12,7 +13,7 @@ class Book {
   }
 
   createBookFromFile(file){
-    console.log('createBookFromFile', file)
+    // console.log('createBookFromFile', file)
     const {
       destination: des, // 文件本地存储目录
       filename, // 文件名称
@@ -39,6 +40,7 @@ class Book {
     this.publisher = '' // 出版社
     this.contents = [] // 目录
     this.cover = '' // 封面图片URL
+    this.coverPath = '' // 封面图片路径
     this.category = -1 // 分类ID
     this.categoryText = '' // 分类名称
     this.language = '' // 语种
@@ -48,7 +50,66 @@ class Book {
   }
 
   createBookFromData(data){
-    console.log('createBookFromData', data)
+    // console.log('createBookFromData', data)
+  }
+
+  parse() {
+    return new Promise((resolve, reject) => {
+      const bookPath = `${UPLOAD_PATH}${this.path}`
+      console.log('bookpath:', bookPath)
+      if (!this.path || !fs.existsSync(bookPath)) {
+        reject(new Error('电子书路径不存在'))
+      }
+      const epub = new Epub(bookPath)
+      epub.on('error', err => {
+        console.log('epub on err')
+        reject(err)
+      })
+      epub.on('end', err => {
+        console.log('epub on err2')
+        if (err) {
+          reject(err)
+        } else {
+          console.log('manifest = ', epub.metadata)
+          const {
+            language,
+            creator,
+            creatorFileAs,
+            title,
+            cover,
+            publisher
+          } =  epub.metadata;
+          if(!title){
+            reject(new Error('图书标题为空'))
+          }else{
+            this.title = title
+            this.language = language || 'en'
+            this.author = creator || creatorFileAs || 'unknown'
+            this.publisher = publisher || 'unknown'
+            this.rootFile = epub.rootFile
+            const handleGetImage = (err, file, mimetype) => {
+              if(err){
+                reject(err)
+              }else{
+                const suffix = mimetype.split('/')[1]
+                const coverPath = `${UPLOAD_PATH}/img/${this.fileName}.${suffix}`
+                const coverUrl = `${UPLOAD_URL}/img/${this.fileName}.${suffix}`
+                fs.writeFileSync(coverPath, file, 'binary')
+                this.coverPath = '/img/${this.fileName}.${suffix}'
+                this.cover = coverUrl
+                resolve(this)
+              }
+              console.log('err', err)
+              console.log('file', file)
+              console.log('mimetype', mimetype)
+            }
+            epub.getImage(cover, handleGetImage)
+          }
+        }
+      })
+      epub.parse()
+      this.epub = epub
+    })
   }
 
 }

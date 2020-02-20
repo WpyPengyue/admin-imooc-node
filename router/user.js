@@ -19,7 +19,7 @@ router.post('/login',
   ],
   function (req, res, next) {
     const err = validationResult(req)
-    console.log('err:' + JSON.stringify(err))
+    // console.log('err:' + JSON.stringify(err))
     if (!err.isEmpty()) {
       const [{ msg }] = err.errors
       next(boom.badRequest(msg))

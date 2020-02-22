@@ -40,6 +40,7 @@ class Book {
     this.author = '' // 作者
     this.publisher = '' // 出版社
     this.contents = [] // 目录
+    this.contentsTree = [] //树状目录结构
     this.cover = '' // 封面图片URL
     this.coverPath = '' // 封面图片路径
     this.category = -1 // 分类ID

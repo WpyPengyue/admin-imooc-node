@@ -1,6 +1,7 @@
 const { MIME_TYPE_EPUB, UPLOAD_URL, UPLOAD_PATH } = require('../utils/constant')
 const fs = require('fs')
 const Epub = require('../utils/epub')
+const xml2js = require('xml2js').parseString
 
 class Book {
 
@@ -99,17 +100,150 @@ class Book {
                 this.cover = coverUrl
                 resolve(this)
               }
-              console.log('err', err)
-              console.log('file', file)
-              console.log('mimetype', mimetype)
+              // console.log('err', err)
+              // console.log('file', file)
+              // console.log('mimetype', mimetype)
             }
-            epub.getImage(cover, handleGetImage)
+            try {
+              this.unzip() // 解压电子书
+              this.parseContents(epub)
+                .then(({ chapters, chapterTree }) => {
+                  this.contents = chapters
+                  this.contentsTree = chapterTree
+                  epub.getImage(cover, handleGetImage) // 获取封面图片
+                })
+                .catch(err => reject(err)) // 解析目录
+            } catch (e) {
+              reject(e)
+            }
           }
         }
       })
       epub.parse()
       this.epub = epub
     })
+  }
+
+  unzip(){
+    const AdmZip = require('adm-zip')
+    const zip = new AdmZip(Book.genPath(this.path))
+    zip.extractAllTo(Book.genPath(this.unzipPath), true)
+  }
+
+  parseContents(epub) {
+    function getNcxFilePath() {
+      const manifest = epub && epub.manifest
+      const spine = epub && epub.spine
+      const ncx = manifest && manifest.ncx
+      const toc = spine && spine.toc
+      return (ncx && ncx.href) || (toc && toc.href)
+    }
+
+    /**
+     * flatten方法，将目录转为一维数组
+     *
+     * @param array
+     * @returns {*[]}
+     */
+    function flatten(array) {
+      return [].concat(...array.map(item => {
+        if (item.navPoint && item.navPoint.length) {
+          return [].concat(item, ...flatten(item.navPoint))
+        } else if (item.navPoint) {
+          return [].concat(item, item.navPoint)
+        } else {
+          return item
+        }
+      }))
+    }
+
+    /**
+     * 查询当前目录的父级目录及规定层次
+     *
+     * @param array
+     * @param level
+     * @param pid
+     */
+    function findParent(array, level = 0, pid = '') {
+      return array.map(item => {
+        item.level = level
+        item.pid = pid
+        if (item.navPoint && item.navPoint.length) {
+          item.navPoint = findParent(item.navPoint, level + 1, item['$'].id)
+        } else if (item.navPoint) {
+          item.navPoint.level = level + 1
+          item.navPoint.pid = item['$'].id
+        }
+        return item
+      })
+    }
+
+    if (!this.rootFile) {
+      throw new Error('目录解析失败')
+    } else {
+      const fileName = this.fileName
+      return new Promise((resolve, reject) => {
+        const ncxFilePath = Book.genPath(`${this.unzipPath}/${getNcxFilePath()}`) // 获取ncx文件路径
+        const xml = fs.readFileSync(ncxFilePath, 'utf-8') // 读取ncx文件
+        // 将ncx文件从xml转为json
+        xml2js(xml, {
+          explicitArray: false, // 设置为false时，解析结果不会包裹array
+          ignoreAttrs: false  // 解析属性
+        }, function(err, json) {
+          if (!err) {
+            const navMap = json.ncx.navMap // 获取ncx的navMap属性
+            if (navMap.navPoint) { // 如果navMap属性存在navPoint属性，则说明目录存在
+              navMap.navPoint = findParent(navMap.navPoint)
+              const newNavMap = flatten(navMap.navPoint) // 将目录拆分为扁平结构
+              const chapters = []
+              epub.flow.forEach((chapter, index) => { // 遍历epub解析出来的目录
+                // 如果目录大于从ncx解析出来的数量，则直接跳过
+                if (index + 1 > newNavMap.length) {
+                  return
+                }
+                const nav = newNavMap[index] // 根据index找到对应的navMap
+                chapter.text = `${UPLOAD_URL}/unzip/${fileName}/${chapter.href}` // 生成章节的URL
+                // console.log(`${JSON.stringify(navMap)}`)
+                if (nav && nav.navLabel) { // 从ncx文件中解析出目录的标题
+                  chapter.label = nav.navLabel.text || ''
+                } else {
+                  chapter.label = ''
+                }
+                chapter.level = nav.level
+                chapter.pid = nav.pid
+                chapter.navId = nav['$'].id
+                chapter.fileName = fileName
+                chapter.order = index + 1
+                chapters.push(chapter)
+              })
+              // console.log('chapters', chapters)
+              const chapterTree = []
+              chapters.forEach(c => {
+                c.children = []
+                if (c.pid === '') {
+                  chapterTree.push(c)
+                } else {
+                  const parent = chapters.find(_ => _.navId === c.pid)
+                  parent.children.push(c)
+                }
+              }) // 将目录转化为树状结构
+              resolve({ chapters, chapterTree })
+            } else {
+              reject(new Error('目录解析失败，navMap.navPoint error'))
+            }
+          } else {
+            reject(err)
+          }
+        })
+      })
+    }
+  }
+
+  static genPath(path) {
+    if(!path.startsWith('/')) {
+      path = '/${path}'
+    }
+    return `${UPLOAD_PATH}${path}`
   }
 
 }

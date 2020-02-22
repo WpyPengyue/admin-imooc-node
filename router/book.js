@@ -17,8 +17,8 @@ router.post(
       const book = new Book(req.file)
       book.parse()
         .then(book => {
-          // new Result('上传电子书成功').success(res)
-          // console.log('book', book)
+          console.log('book', book)
+          new Result(book, '上传电子书成功').success(res)
         }).catch(err => {
           // console.log(err)
           next(boom.badImplementation(err))

@@ -1,5 +1,6 @@
-const { MIME_TYPE_EPUB, UPLOAD_URL, UPLOAD_PATH } = require('../utils/constant')
+const { MIME_TYPE_EPUB, UPLOAD_URL, UPLOAD_PATH, UPDATE_TYPE_FROM_WEB } = require('../utils/constant')
 const fs = require('fs')
+const path = require('path')
 const Epub = require('../utils/epub')
 const xml2js = require('xml2js').parseString
 
@@ -13,7 +14,7 @@ class Book {
     }
   }
 
-  createBookFromFile(file){
+  createBookFromFile(file) {
     // console.log('createBookFromFile', file)
     const {
       destination: des, // 文件本地存储目录
@@ -51,8 +52,28 @@ class Book {
     this.originalName = file.originalname
   }
 
-  createBookFromData(data){
+  createBookFromData(data) {
     // console.log('createBookFromData', data)
+    this.fileName = data.fileName
+    this.cover = data.coverPath
+    this.title = data.title
+    this.author = data.author
+    this.publisher = data.publisher
+    this.bookId = data.fileName
+    this.language = data.language
+    this.rootFile = data.rootFile
+    this.originalName = data.originalName
+    this.path = data.path || data.filePath
+    this.filePath = data.path || data.filePath
+    this.unzipPath = data.unzipPath
+    this.coverPath = data.coverPath
+    this.createUser = data.username
+    this.createDt = new Date().getTime()
+    this.updateDt = new Date().getTime()
+    this.updateType = data.updateType === 0 ? data.updateType : UPDATE_TYPE_FROM_WEB
+    this.contents = data.contents
+    this.category = data.category || 99
+    this.categoryText = data.categoryText || '自定义'
   }
 
   parse() {
@@ -80,24 +101,24 @@ class Book {
             title,
             cover,
             publisher
-          } =  epub.metadata;
-          if(!title){
+          } = epub.metadata;
+          if (!title) {
             reject(new Error('图书标题为空'))
-          }else{
+          } else {
             this.title = title
             this.language = language || 'en'
             this.author = creator || creatorFileAs || 'unknown'
             this.publisher = publisher || 'unknown'
             this.rootFile = epub.rootFile
             const handleGetImage = (err, file, mimetype) => {
-              if(err){
+              if (err) {
                 reject(err)
-              }else{
+              } else {
                 const suffix = mimetype.split('/')[1]
                 const coverPath = `${UPLOAD_PATH}/img/${this.fileName}.${suffix}`
                 const coverUrl = `${UPLOAD_URL}/img/${this.fileName}.${suffix}`
                 fs.writeFileSync(coverPath, file, 'binary')
-                this.coverPath = '/img/${this.fileName}.${suffix}'
+                this.coverPath = `/img/${this.fileName}.${suffix}`
                 this.cover = coverUrl
                 resolve(this)
               }
@@ -125,7 +146,7 @@ class Book {
     })
   }
 
-  unzip(){
+  unzip() {
     const AdmZip = require('adm-zip')
     const zip = new AdmZip(Book.genPath(this.path))
     zip.extractAllTo(Book.genPath(this.unzipPath), true)
@@ -190,7 +211,7 @@ class Book {
         xml2js(xml, {
           explicitArray: false, // 设置为false时，解析结果不会包裹array
           ignoreAttrs: false  // 解析属性
-        }, function(err, json) {
+        }, function (err, json) {
           if (!err) {
             const navMap = json.ncx.navMap // 获取ncx的navMap属性
             if (navMap.navPoint) { // 如果navMap属性存在navPoint属性，则说明目录存在
@@ -240,8 +261,31 @@ class Book {
     }
   }
 
+  toDb() {
+    return {
+      fileName: this.fileName,
+      cover: this.cover,
+      title: this.title,
+      author: this.author,
+      publisher: this.publisher,
+      bookId: this.bookId,
+      updateType: this.updateType,
+      language: this.language,
+      rootFile: this.rootFile,
+      originalName: this.originalName,
+      filePath: this.path,
+      unzipPath: this.unzipPath,
+      coverPath: this.coverPath,
+      createUser: this.createUser,
+      createDt: this.createDt,
+      updateDt: this.updateDt,
+      category: this.category || 99,
+      categoryText: this.categoryText || '自定义'
+    }
+  }
+
   static genPath(path) {
-    if(!path.startsWith('/')) {
+    if (!path.startsWith('/')) {
       path = '/${path}'
     }
     return `${UPLOAD_PATH}${path}`

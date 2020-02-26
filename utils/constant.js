@@ -14,5 +14,6 @@ module.exports = {
     JWT_EXPIRED: 60 * 60, // token失效时间
     UPLOAD_PATH: UPLOAD_PATH,
     MIME_TYPE_EPUB: 'application/epub+zip',
-    UPLOAD_URL: UPLOAD_URL
+    UPLOAD_URL: UPLOAD_URL,
+    UPDATE_TYPE_FROM_WEB: 10
 }

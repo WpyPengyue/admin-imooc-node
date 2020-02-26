@@ -4,6 +4,8 @@ const { UPLOAD_PATH, MIME_TYPE_EPUB } = require('../utils/constant')
 const Result = require('../models/Result')
 const Book = require('../models/Book')
 const boom = require('boom')
+const { decode } = require('../utils')
+const bookService = require('../services/book')
 
 const router = express.Router()
 
@@ -24,6 +26,25 @@ router.post(
           next(boom.badImplementation(err))
         })
     }
+  }
+)
+
+router.post(
+  '/create',
+  function (req, res, next) {
+    const decodeObj = decode(req)
+    // console.log(decodeObj)
+    if(decodeObj && decodeObj.username) {
+      req.body.username = decodeObj.username
+    }
+    console.log('body', req.body)
+    const book = new Book(null, req.body)
+    console.log('book', book)
+    bookService.insertBook(book).then(() => {
+
+    }).catch(err => {
+      next(boom.badImplementation(err))
+    })
   }
 )
 

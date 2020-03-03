@@ -74,6 +74,7 @@ class Book {
     this.contents = data.contents
     this.category = data.category || 99
     this.categoryText = data.categoryText || '自定义'
+    this.contents = data.contents || []
   }
 
   parse() {
@@ -154,43 +155,22 @@ class Book {
 
   parseContents(epub) {
     function getNcxFilePath() {
-      const manifest = epub && epub.manifest
       const spine = epub && epub.spine
-      const ncx = manifest && manifest.ncx
-      const toc = spine && spine.toc
-      return (ncx && ncx.href) || (toc && toc.href)
+      const manifest = epub && epub.manifest
+      const ncx = spine.toc && spine.toc.href
+      const id = spine.toc && spine.toc.id
+      if (ncx) {
+        return ncx
+      } else {
+        return manifest[id].href
+      }
     }
 
-    /**
-     * flatten方法，将目录转为一维数组
-     *
-     * @param array
-     * @returns {*[]}
-     */
-    function flatten(array) {
-      return [].concat(...array.map(item => {
-        if (item.navPoint && item.navPoint.length) {
-          return [].concat(item, ...flatten(item.navPoint))
-        } else if (item.navPoint) {
-          return [].concat(item, item.navPoint)
-        } else {
-          return item
-        }
-      }))
-    }
-
-    /**
-     * 查询当前目录的父级目录及规定层次
-     *
-     * @param array
-     * @param level
-     * @param pid
-     */
     function findParent(array, level = 0, pid = '') {
       return array.map(item => {
         item.level = level
         item.pid = pid
-        if (item.navPoint && item.navPoint.length) {
+        if (item.navPoint && item.navPoint.length > 0) {
           item.navPoint = findParent(item.navPoint, level + 1, item['$'].id)
         } else if (item.navPoint) {
           item.navPoint.level = level + 1
@@ -200,64 +180,57 @@ class Book {
       })
     }
 
-    if (!this.rootFile) {
-      throw new Error('目录解析失败')
-    } else {
-      const fileName = this.fileName
+    function flatten(array) {
+      return [].concat(...array.map(item => {
+        if (item.navPoint && item.navPoint.length > 0) {
+          return [].concat(item, ...flatten(item.navPoint))
+        } else if (item.navPoint) {
+          return [].concat(item, item.navPoint)
+        }
+        return item
+      }))
+    }
+
+    const ncxFilePath = Book.genPath(`${this.unzipPath}/${getNcxFilePath()}`)
+    if (fs.existsSync(ncxFilePath)) {
       return new Promise((resolve, reject) => {
-        const ncxFilePath = Book.genPath(`${this.unzipPath}/${getNcxFilePath()}`) // 获取ncx文件路径
-        const xml = fs.readFileSync(ncxFilePath, 'utf-8') // 读取ncx文件
-        // 将ncx文件从xml转为json
+        const xml = fs.readFileSync(ncxFilePath, 'utf-8')
+        const dir = path.dirname(ncxFilePath).replace(UPLOAD_PATH, '')
+        const fileName = this.fileName
+        const unzipPath = this.unzipPath
         xml2js(xml, {
-          explicitArray: false, // 设置为false时，解析结果不会包裹array
-          ignoreAttrs: false  // 解析属性
-        }, function (err, json) {
-          if (!err) {
-            const navMap = json.ncx.navMap // 获取ncx的navMap属性
-            if (navMap.navPoint) { // 如果navMap属性存在navPoint属性，则说明目录存在
+          explicitArray: false,
+          ignoreAttrs: false
+        }, function(err, json) {
+          if (err) {
+            reject(err)
+          } else {
+            const navMap = json.ncx.navMap
+            if (navMap.navPoint && navMap.navPoint.length > 0) {
               navMap.navPoint = findParent(navMap.navPoint)
-              const newNavMap = flatten(navMap.navPoint) // 将目录拆分为扁平结构
+              const newNavMap = flatten(navMap.navPoint)
               const chapters = []
-              epub.flow.forEach((chapter, index) => { // 遍历epub解析出来的目录
-                // 如果目录大于从ncx解析出来的数量，则直接跳过
-                if (index + 1 > newNavMap.length) {
-                  return
-                }
-                const nav = newNavMap[index] // 根据index找到对应的navMap
-                chapter.text = `${UPLOAD_URL}/unzip/${fileName}/${chapter.href}` // 生成章节的URL
-                // console.log(`${JSON.stringify(navMap)}`)
-                if (nav && nav.navLabel) { // 从ncx文件中解析出目录的标题
-                  chapter.label = nav.navLabel.text || ''
-                } else {
-                  chapter.label = ''
-                }
-                chapter.level = nav.level
-                chapter.pid = nav.pid
-                chapter.navId = nav['$'].id
+              newNavMap.forEach((chapter, index) => {
+                const src = chapter.content['$'].src
+                chapter.id = `${src}`
+                chapter.href = `${dir}/${src}`.replace(unzipPath, '')
+                chapter.text = `${UPLOAD_URL}${dir}/${src}`
+                chapter.label = chapter.navLabel.text || ''
+                chapter.navId = chapter['$'].id
                 chapter.fileName = fileName
                 chapter.order = index + 1
                 chapters.push(chapter)
               })
-              // console.log('chapters', chapters)
-              const chapterTree = []
-              chapters.forEach(c => {
-                c.children = []
-                if (c.pid === '') {
-                  chapterTree.push(c)
-                } else {
-                  const parent = chapters.find(_ => _.navId === c.pid)
-                  parent.children.push(c)
-                }
-              }) // 将目录转化为树状结构
+              const chapterTree = Book.genContentsTree(chapters)
               resolve({ chapters, chapterTree })
             } else {
-              reject(new Error('目录解析失败，navMap.navPoint error'))
+              reject(new Error('目录解析失败，目录数为0'))
             }
-          } else {
-            reject(err)
           }
         })
       })
+    } else {
+      throw new Error('目录文件不存在')
     }
   }
 
@@ -284,11 +257,31 @@ class Book {
     }
   }
 
+  getContents() {
+    return this.contents
+  }
+
   static genPath(path) {
     if (!path.startsWith('/')) {
       path = '/${path}'
     }
     return `${UPLOAD_PATH}${path}`
+  }
+
+  static genContentsTree(contents) {
+    if (contents) {
+      const contentsTree = []
+      contents.forEach(c => {
+        c.children = []
+        if (c.pid === '') {
+          contentsTree.push(c)
+        } else {
+          const parent = contents.find(_ => _.navId === c.pid)
+          parent.children.push(c)
+        }
+      })
+      return contentsTree
+    }
   }
 
 }

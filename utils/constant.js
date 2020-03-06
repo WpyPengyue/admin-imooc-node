@@ -2,6 +2,8 @@ const {env} = require('./env')
 
 const UPLOAD_PATH = env === 'dev' ? '/Users/wangpengyue/Documents/upload/ebook':'';
 
+const OLD_UPLOAD_URL = env === 'dev' ? 'http://localhost:8090/ebook/book/res/img' : 'https://www.youbaobao.xyz/book/res/img'
+
 const UPLOAD_URL = env === 'dev' ? 'http://localhost:8090/ebook':'';
 
 module.exports = {
@@ -15,5 +17,6 @@ module.exports = {
     UPLOAD_PATH: UPLOAD_PATH,
     MIME_TYPE_EPUB: 'application/epub+zip',
     UPLOAD_URL: UPLOAD_URL,
-    UPDATE_TYPE_FROM_WEB: 10
+    UPDATE_TYPE_FROM_WEB: 10,
+    OLD_UPLOAD_URL
 }

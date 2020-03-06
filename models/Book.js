@@ -1,15 +1,19 @@
-const { MIME_TYPE_EPUB, UPLOAD_URL, UPLOAD_PATH, UPDATE_TYPE_FROM_WEB } = require('../utils/constant')
+const {
+  MIME_TYPE_EPUB,
+  OLD_UPLOAD_URL,
+  UPLOAD_URL,
+  UPLOAD_PATH
+} = require('../utils/constant')
 const fs = require('fs')
 const path = require('path')
 const Epub = require('../utils/epub')
 const xml2js = require('xml2js').parseString
 
 class Book {
-
   constructor(file, data) {
     if (file) {
       this.createBookFromFile(file)
-    } else if (data) {
+    } else {
       this.createBookFromData(data)
     }
   }
@@ -17,43 +21,50 @@ class Book {
   createBookFromFile(file) {
     // console.log('createBookFromFile', file)
     const {
-      destination: des, // 文件本地存储目录
-      filename, // 文件名称
-      mimetype = MIME_TYPE_EPUB // 文件资源类型
+      destination,
+      filename,
+      mimetype = MIME_TYPE_EPUB,
+      path,
+      originalname
     } = file
+    // 电子书的文件后缀名
     const suffix = mimetype === MIME_TYPE_EPUB ? '.epub' : ''
-    const oldBookPath = `${des}/${filename}`
-    const bookPath = `${des}/${filename}${suffix}`
+    // 电子书的原有路径
+    const oldBookPath = path
+    // 电子书的新路径
+    const bookPath = `${destination}/${filename}${suffix}`
+    // 电子书的下载URL
     const url = `${UPLOAD_URL}/book/${filename}${suffix}`
+    // 电子书解压后的文件夹路径
     const unzipPath = `${UPLOAD_PATH}/unzip/${filename}`
+    // 电子书解压后的文件夹URL
     const unzipUrl = `${UPLOAD_URL}/unzip/${filename}`
     if (!fs.existsSync(unzipPath)) {
-      fs.mkdirSync(unzipPath, { recursive: true }) // 创建电子书解压后的目录
+      fs.mkdirSync(unzipPath, { recursive: true })
     }
     if (fs.existsSync(oldBookPath) && !fs.existsSync(bookPath)) {
-      fs.renameSync(oldBookPath, bookPath) // 重命名文件
+      fs.renameSync(oldBookPath, bookPath)
     }
     this.fileName = filename // 文件名
-    this.path = `/book/${filename}${suffix}` // epub文件路径
-    this.filePath = this.path // epub文件路径
-    this.url = url // epub文件url
-    this.title = '' // 标题
+    this.path = `/book/${filename}${suffix}` // epub文件相对路径
+    this.filePath = this.path
+    this.unzipPath = `/unzip/${filename}` // epub解压后相对路径
+    this.url = url // epub文件下载链接
+    this.title = '' // 书名
     this.author = '' // 作者
     this.publisher = '' // 出版社
     this.contents = [] // 目录
-    this.contentsTree = [] //树状目录结构
+    this.contentsTree = [] // 树状目录结构
     this.cover = '' // 封面图片URL
     this.coverPath = '' // 封面图片路径
     this.category = -1 // 分类ID
     this.categoryText = '' // 分类名称
     this.language = '' // 语种
-    this.unzipPath = `/unzip/${filename}` // 解压后的电子书目录
-    this.unzipUrl = unzipUrl // 解压后的电子书链接
-    this.originalName = file.originalname
+    this.unzipUrl = unzipUrl // 解压后文件夹链接
+    this.originalName = originalname // 电子书文件的原名
   }
 
   createBookFromData(data) {
-    // console.log('createBookFromData', data)
     this.fileName = data.fileName
     this.cover = data.coverPath
     this.title = data.title
@@ -70,8 +81,7 @@ class Book {
     this.createUser = data.username
     this.createDt = new Date().getTime()
     this.updateDt = new Date().getTime()
-    this.updateType = data.updateType === 0 ? data.updateType : UPDATE_TYPE_FROM_WEB
-    this.contents = data.contents
+    this.updateType = data.updateType === 0 ? data.updateType : 1
     this.category = data.category || 99
     this.categoryText = data.categoryText || '自定义'
     this.contents = data.contents || []
@@ -79,22 +89,18 @@ class Book {
 
   parse() {
     return new Promise((resolve, reject) => {
-      const bookPath = `${UPLOAD_PATH}${this.path}`
-      console.log('bookpath:', bookPath)
-      if (!this.path || !fs.existsSync(bookPath)) {
-        reject(new Error('电子书路径不存在'))
+      const bookPath = `${UPLOAD_PATH}${this.filePath}`
+      if (!fs.existsSync(bookPath)) {
+        reject(new Error('电子书不存在'))
       }
       const epub = new Epub(bookPath)
       epub.on('error', err => {
-        console.log('epub on err')
         reject(err)
       })
       epub.on('end', err => {
-        console.log('epub on err2')
         if (err) {
           reject(err)
         } else {
-          console.log('manifest = ', epub.metadata)
           const {
             language,
             creator,
@@ -102,7 +108,7 @@ class Book {
             title,
             cover,
             publisher
-          } = epub.metadata;
+          } = epub.metadata
           if (!title) {
             reject(new Error('图书标题为空'))
           } else {
@@ -111,11 +117,11 @@ class Book {
             this.author = creator || creatorFileAs || 'unknown'
             this.publisher = publisher || 'unknown'
             this.rootFile = epub.rootFile
-            const handleGetImage = (err, file, mimetype) => {
+            const handleGetImage = (err, file, mimeType) => {
               if (err) {
                 reject(err)
               } else {
-                const suffix = mimetype.split('/')[1]
+                const suffix = mimeType.split('/')[1]
                 const coverPath = `${UPLOAD_PATH}/img/${this.fileName}.${suffix}`
                 const coverUrl = `${UPLOAD_URL}/img/${this.fileName}.${suffix}`
                 fs.writeFileSync(coverPath, file, 'binary')
@@ -123,19 +129,14 @@ class Book {
                 this.cover = coverUrl
                 resolve(this)
               }
-              // console.log('err', err)
-              // console.log('file', file)
-              // console.log('mimetype', mimetype)
             }
             try {
-              this.unzip() // 解压电子书
-              this.parseContents(epub)
-                .then(({ chapters, chapterTree }) => {
-                  this.contents = chapters
-                  this.contentsTree = chapterTree
-                  epub.getImage(cover, handleGetImage) // 获取封面图片
-                })
-                .catch(err => reject(err)) // 解析目录
+              this.unzip()
+              this.parseContents(epub).then(({ chapters, chapterTree }) => {
+                this.contents = chapters
+                this.contentsTree = chapterTree
+                epub.getImage(cover, handleGetImage)
+              })
             } catch (e) {
               reject(e)
             }
@@ -143,7 +144,6 @@ class Book {
         }
       })
       epub.parse()
-      this.epub = epub
     })
   }
 
@@ -237,23 +237,23 @@ class Book {
   toDb() {
     return {
       fileName: this.fileName,
-      cover: this.cover,
+      cover: this.coverPath,
       title: this.title,
       author: this.author,
       publisher: this.publisher,
-      bookId: this.bookId,
-      updateType: this.updateType,
+      bookId: this.fileName,
       language: this.language,
       rootFile: this.rootFile,
       originalName: this.originalName,
-      filePath: this.path,
+      filePath: this.filePath,
       unzipPath: this.unzipPath,
       coverPath: this.coverPath,
       createUser: this.createUser,
       createDt: this.createDt,
       updateDt: this.updateDt,
-      category: this.category || 99,
-      categoryText: this.categoryText || '自定义'
+      updateType: this.updateType,
+      category: this.category,
+      categoryText: this.categoryText
     }
   }
 
@@ -261,11 +261,79 @@ class Book {
     return this.contents
   }
 
+  reset() {
+    console.log(this.fileName)
+    if (Book.pathExists(this.filePath)) {
+      fs.unlinkSync(Book.genPath(this.filePath))
+    }
+    if (Book.pathExists(this.coverPath)) {
+      fs.unlinkSync(Book.genPath(this.coverPath))
+    }
+    function delDir(p) {
+      // 读取文件夹中所有文件及文件夹
+      var list = fs.readdirSync(p)
+      list.forEach((v, i) => {
+        // 拼接路径
+        var url = p + '/' + v
+        // 读取文件信息
+        var stats = fs.statSync(url)
+        // 判断是文件还是文件夹
+        if (stats.isFile()) {
+          // 当前为文件，则删除文件
+          fs.unlinkSync(url)
+        } else {
+          // 当前为文件夹，则递归调用自身
+          // arguments.callee(url)
+          delDir(url)
+        }
+      })
+      // 删除空文件夹
+      fs.rmdirSync(p)
+    }
+    if (Book.pathExists(this.unzipPath)) {
+      // fs.rmdirSync(Book.genPath(this.unzipPath), { recursive: true })
+      delDir(Book.genPath(this.unzipPath))
+    }
+  }
+
   static genPath(path) {
     if (!path.startsWith('/')) {
-      path = '/${path}'
+      path = `/${path}`
     }
     return `${UPLOAD_PATH}${path}`
+  }
+
+  static pathExists(path) {
+    if (path.startsWith(UPLOAD_PATH)) {
+      return fs.existsSync(path)
+    } else {
+      return fs.existsSync(Book.genPath(path))
+    }
+  }
+
+  static genCoverUrl(book) {
+    const { cover } = book
+    if (+book.updateType === 0) {
+      if (cover) {
+        if (cover.startsWith('/')) {
+          return `${OLD_UPLOAD_URL}${cover}`
+        } else {
+          return `${OLD_UPLOAD_URL}/${cover}`
+        }
+      } else {
+        return null
+      }
+    } else {
+      if (cover) {
+        if (cover.startsWith('/')) {
+          return `${UPLOAD_URL}${cover}`
+        } else {
+          return `${UPLOAD_URL}/${cover}`
+        }
+      } else {
+        return null
+      }
+    }
   }
 
   static genContentsTree(contents) {
@@ -283,7 +351,6 @@ class Book {
       return contentsTree
     }
   }
-
 }
 
 module.exports = Book

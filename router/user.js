@@ -1,7 +1,7 @@
 const express = require('express')
 const Result = require('../models/Result')
 const { login, findUser } = require('../services/user')
-const { md5, decode } = require('../utils/index')
+const { md5, decoded } = require('../utils/index')
 const { PWD_SALT } = require('../utils/constant')
 const { body, validationResult } = require('express-validator')
 const boom = require('boom')
@@ -45,9 +45,9 @@ router.post('/login',
 
 router.get('/info',
   function (req, res) {
-    const decoded = decode(req)
-    if(decoded && decoded.username){
-      findUser(decoded.username).then(user => {
+    const decode = decoded(req)
+    if(decode && decode.username){
+      findUser(decode.username).then(user => {
         if(user){
           user.roles = [user.role]
           new Result(user, '获取用户信息成功').success(res)

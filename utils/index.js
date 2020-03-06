@@ -12,7 +12,7 @@ function md5(s) {
         .update(String(s)).digest('hex');
 }
 
-function decode(req) {
+function decoded(req) {
     const authorization = req.get('Authorization')
     let token = ''
     if (authorization.indexOf('Bearer') >= 0) {
@@ -25,6 +25,6 @@ function decode(req) {
 
 module.exports = {
     md5,
-    decode,
+    decoded,
     isObject
 }

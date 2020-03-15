@@ -82,6 +82,7 @@ router.get('/category', function(req, res, next) {
 })
 
 router.get('/list', function(req, res, next) {
+  console.log('list-req', req)
   bookService.listBook(req.query)
     .then(({ list, count, page, pageSize }) => {
       new Result({ list, count, page: +page, pageSize: +pageSize },
